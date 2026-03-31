@@ -3,8 +3,6 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import dotenv from "dotenv";
 import cors from "cors";
-import { exec } from "child_process";
-import util from "util";
 import { setLogCallback } from "./src/lib/utils/logger.ts";
 import { agentSwarm } from "./src/lib/agents/swarm.ts";
 import { registerAgentIdentity } from "./src/lib/agents/onchain.ts";
