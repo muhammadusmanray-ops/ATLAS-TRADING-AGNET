@@ -1,6 +1,4 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
-import path from "path";
 import dotenv from "dotenv";
 import cors from "cors";
 import { setLogCallback } from "../src/lib/utils/logger.ts";
@@ -24,7 +22,6 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 export const app = express();
-const PORT = 3000;
 
 app.use(cors());
 app.use(express.json());
