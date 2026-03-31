@@ -1,0 +1,5 @@
+{
+  "name": "Atlas",
+  "description": "Autonomous AI trading agent for the Surge x Kraken Hackathon, featuring ERC-8004 identity and Kraken CLI integration.",
+  "requestFramePermissions": []
+}

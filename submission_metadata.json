@@ -1,0 +1,27 @@
+{
+  "project_name": "ATLAS AI Trading Swarm",
+  "tagline": "A Trustless, Multi-Agent Intelligence Layer for High-Fidelity Trading Decisions.",
+  "challenges": [
+    "Kraken CLI Challenge",
+    "ERC-8004 Identity Challenge"
+  ],
+  "technology_stack": [
+    "Vite",
+    "TailwindCSS",
+    "LangGraph/LangChain",
+    "Groq Llama-3.1",
+    "Tavily Search API",
+    "CoinGecko Market Data",
+    "Base Sepolia / EIP-712"
+  ],
+  "compliance_features": {
+    "kraken_cli": "High-fidelity terminal integration mirroring official CLI outputs.",
+    "erc8004": "Verified agent identities registered on Base Sepolia with reputation scores.",
+    "risk_management": "Decentralized risk routing with resilient local heuristics fallback."
+  },
+  "submission_verification": {
+    "identity_registry": "0x3FED... (Base Sepolia)",
+    "verification_method": "EIP-712 Signed Trade Intents",
+    "status": "COMPLIANT"
+  }
+}

@@ -1,0 +1,110 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "muhammadusmanray@gmail.com" && request.auth.token.email_verified == true));
+    }
+    
+    function uidUnchanged() {
+      return !('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid;
+    }
+    
+    function uidNotModified() {
+      return !('uid' in request.resource.data) || request.resource.data.uid == resource.data.uid;
+    }
+    
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+    
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+    
+    function isValidUser(data) {
+      return hasRequiredFields(['uid', 'email', 'role', 'status', 'theme', 'isDeleted']) &&
+             data.uid is string && data.uid.size() > 0 && data.uid.size() < 100 &&
+             isValidEmail(data.email) &&
+             data.role in ['admin', 'user'] &&
+             data.status in ['active', 'suspended', 'banned'] &&
+             data.theme in ['dark', 'light', 'system'] &&
+             data.isDeleted is bool &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100)) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 500)) &&
+             (!('createdAt' in data) || data.createdAt is string) &&
+             (!('updatedAt' in data) || data.updatedAt is string) &&
+             (!('lastLoginAt' in data) || data.lastLoginAt is string);
+    }
+    
+    function isValidTrade(data) {
+      return hasRequiredFields(['userId', 'symbol', 'type', 'amount', 'price', 'timestamp']) &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() < 100 &&
+             data.symbol is string && data.symbol.size() > 0 && data.symbol.size() < 20 &&
+             data.type in ['BUY', 'SELL'] &&
+             data.amount is number && data.amount > 0 &&
+             data.price is number && data.price > 0 &&
+             data.timestamp is string &&
+             (!('status' in data) || data.status in ['FILLED', 'CANCELLED']);
+    }
+    
+    function isValidLog(data) {
+      return hasRequiredFields(['userId', 'agentName', 'message', 'timestamp']) &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() < 100 &&
+             data.agentName is string && data.agentName.size() > 0 && data.agentName.size() < 50 &&
+             data.message is string && data.message.size() > 0 && data.message.size() < 2000 &&
+             data.timestamp is string;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+    
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      
+      allow create: if isAuthenticated() && 
+                    isValidUser(request.resource.data) && 
+                    isOwner(userId) && 
+                    uidUnchanged() && 
+                    ((request.resource.data.role == 'user') || isAdmin());
+                    
+      allow update: if isAuthenticated() && 
+                    isValidUser(request.resource.data) && 
+                    isOwner(userId) && 
+                    uidNotModified() && 
+                    ((request.resource.data.role == resource.data.role) || isAdmin());
+                    
+      allow delete: if isAdmin();
+      
+      match /trades/{tradeId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) && isValidTrade(request.resource.data) && request.resource.data.userId == userId;
+        allow update: if isOwner(userId) && isValidTrade(request.resource.data) && request.resource.data.userId == resource.data.userId;
+        allow delete: if isAdmin();
+      }
+      
+      match /logs/{logId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) && isValidLog(request.resource.data) && request.resource.data.userId == userId;
+        allow update: if isOwner(userId) && isValidLog(request.resource.data) && request.resource.data.userId == resource.data.userId;
+        allow delete: if isAdmin();
+      }
+    }
+  }
+}
