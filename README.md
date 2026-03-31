@@ -31,6 +31,10 @@ Every trade decision made by the ATLAS Swarm is cryptographically signed using E
 ## 🧠 The Agent Ecosystem
 Our Intelligence Swarm relies on **LangGraph** to coordinate **4 specific AI Agents**. Together they function as an organized fund management team where no single agent can override the Risk Router.
 
+<div align="center">
+  <img src="public/screenshots/agent_matrix.png" alt="Swarm Agent Matrix" width="800">
+</div>
+
 | Agent Name | Role | Technology Engine | Function Details |
 | :--- | :--- | :--- | :--- |
 | **1. ATLAS (Data Node)** | Market Analytics | **PRISM / CoinGecko** | Collects hyper-accurate on-chain pricing, latency metrics, and technical indicators for the current asset. |
