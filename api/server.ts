@@ -43,6 +43,24 @@ setLogCallback(addLogToUI);
 
 const apiRouter = express.Router();
 
+let isReady = false;
+async function getReady() {
+  if (isReady) return;
+  try {
+    console.log("--- Lazy-Loading ATLAS Core ---");
+    await initDb();
+    registerAgentIdentity().catch(err => console.error("ERC-8004 Registration Failed:", err.message));
+    isReady = true;
+  } catch (err) {
+    console.error("Initialization Failed:", err);
+  }
+}
+
+apiRouter.use(async (_req, _res, next) => {
+  await getReady();
+  next();
+});
+
 apiRouter.get("/health", (_req, res) => res.json({ status: "ok" }));
 apiRouter.get("/swarm/logs", (_req, res) => res.json({ logs: swarmLogs }));
 apiRouter.get("/swarm/balance", (_req, res) => res.json({ success: true, balance: currentBalance }));
