@@ -2,7 +2,7 @@ import pg from 'pg';
 import dotenv from 'dotenv';
 
 // Enforce environment variables loading before pool creation
-dotenv.config({ path: 'E:/.env' });
+dotenv.config();
 
 const { Pool } = pg;
 

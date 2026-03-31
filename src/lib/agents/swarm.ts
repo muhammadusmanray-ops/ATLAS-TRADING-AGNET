@@ -4,7 +4,7 @@ import dotenv from "dotenv";
 import { signTradeIntent } from './onchain.ts';
 import { addLog as globalAddLog } from '../utils/logger.ts';
 
-dotenv.config({ path: 'E:/.env' });
+dotenv.config();
 
 // Focus strictly on ERC-8004 Identity & Sandbox Execution
 
