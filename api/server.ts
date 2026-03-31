@@ -44,17 +44,22 @@ let isReady = false;
 async function getReady() {
   if (isReady) return;
   try {
-    console.log("--- Lazy-Loading ATLAS Core ---");
+    console.log("--- Initializing ATLAS Serverless Context ---");
     await initDb();
+    console.log("DB Connection: OK");
     registerAgentIdentity().catch(err => console.error("ERC-8004 Registration Failed:", err.message));
     isReady = true;
-  } catch (err) {
-    console.error("Initialization Failed:", err);
+  } catch (err: any) {
+    console.error("CRITICAL Initialization Error:", err.message);
   }
 }
 
 apiRouter.use(async (_req, _res, next) => {
-  await getReady();
+  try {
+    await getReady();
+  } catch (e) {
+    console.error("Middleware Sync Error:", e);
+  }
   next();
 });
 
