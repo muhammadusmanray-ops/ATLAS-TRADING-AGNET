@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 import dotenv from 'dotenv';
-dotenv.config();
+dotenv.config({ path: 'E:/.env' });
 
 // Standard EIP-712 setup for TradeIntents required by ERC-8004 Sandbox
 const domain = {

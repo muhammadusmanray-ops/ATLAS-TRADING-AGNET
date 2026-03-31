@@ -11,7 +11,7 @@ import { registerAgentIdentity } from "./src/lib/agents/onchain.ts";
 import { initDb, query } from "./src/lib/db.ts";
 
 const execAsync = util.promisify(exec);
-dotenv.config();
+dotenv.config({ path: 'E:/.env' });
 
 // Global Trading State (Real-time Session sync)
 let currentBalance = 0; // In USD
