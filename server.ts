@@ -91,7 +91,7 @@ apiRouter.post("/swarm/claim-capital", async (_req, res) => {
 
 apiRouter.get("/trades", (_req, res) => {
   try {
-    query("SELECT * FROM trades ORDER BY timestamp DESC LIMIT 100").then(result => {
+    query("SELECT * FROM trades ORDER BY timestamp DESC LIMIT 100").then((result: any) => {
       res.json({ success: true, trades: result.rows });
     }).catch(() => {
       res.json({ success: true, trades: [] });

@@ -4,16 +4,22 @@ import dotenv from 'dotenv';
 // Enforce environment variables loading before pool creation
 dotenv.config();
 
-const { Pool } = pg;
+let pool: any;
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
+export const getPool = () => {
+  if (!pool) {
+    const { Pool } = pg;
+    pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: {
+        rejectUnauthorized: false
+      }
+    });
   }
-});
+  return pool;
+};
 
-export const query = (text: string, params?: any[]) => pool.query(text, params);
+export const query = (text: string, params?: any[]) => getPool().query(text, params);
 
 export const initDb = async () => {
   try {

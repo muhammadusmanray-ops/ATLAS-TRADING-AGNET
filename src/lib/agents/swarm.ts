@@ -16,13 +16,17 @@ interface AgentState {
   finalDecision: string;
 }
 
-// Initialize Models
-// Using a smaller, faster model (llama3-8b-8192) to save tokens and avoid rate limits
-const groqModel = new ChatGroq({
-  apiKey: process.env.GROQ_API_KEY || "dummy-key",
-  model: "llama-3.1-8b-instant", 
-  maxRetries: 3, // Auto-retry if rate limited
-});
+let groqModel: any;
+const getGroqModel = () => {
+  if (!groqModel) {
+    groqModel = new ChatGroq({
+      apiKey: process.env.GROQ_API_KEY || "dummy-key",
+      model: "llama-3.1-8b-instant", 
+      maxRetries: 3, 
+    });
+  }
+  return groqModel;
+};
 
 // Helper function to add a small delay between agent calls to prevent rate limit spikes
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -76,7 +80,7 @@ const sentimentAgent = async (_state: AgentState) => {
     globalAddLog(`[Nova] 📡 News Scraped: "${tavilyData.results[0]?.title.substring(0, 40)}..."`);
 
     // 2. Analyze sentiment via Groq (Llama-3)
-    const completion = await groqModel.invoke([
+    const completion = await getGroqModel().invoke([
       { role: "system", content: "Analyze the following headlines and reply only with 'bullish', 'bearish', or 'neutral'." },
       { role: "user", content: headlines }
     ]);
