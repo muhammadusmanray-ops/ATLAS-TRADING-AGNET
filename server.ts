@@ -5,13 +5,11 @@ import dotenv from "dotenv";
 import cors from "cors";
 import { exec } from "child_process";
 import util from "util";
-import { addLog as globalAddLog, setLogCallback } from "./src/lib/utils/logger.ts";
+import { setLogCallback } from "./src/lib/utils/logger.ts";
 import { agentSwarm } from "./src/lib/agents/swarm.ts";
 import { registerAgentIdentity } from "./src/lib/agents/onchain.ts";
-import { fileURLToPath } from "url";
 import { initDb, query } from "./src/lib/db.ts";
 
-const execAsync = util.promisify(exec);
 dotenv.config();
 
 // Global Trading State (Real-time Session sync)
@@ -47,11 +45,11 @@ setLogCallback(addLogToUI);
 
 const apiRouter = express.Router();
 
-apiRouter.get("/health", (req, res) => res.json({ status: "ok" }));
-apiRouter.get("/swarm/logs", (req, res) => res.json({ logs: swarmLogs }));
-apiRouter.get("/swarm/balance", (req, res) => res.json({ success: true, balance: currentBalance }));
+apiRouter.get("/health", (_req, res) => res.json({ status: "ok" }));
+apiRouter.get("/swarm/logs", (_req, res) => res.json({ logs: swarmLogs }));
+apiRouter.get("/swarm/balance", (_req, res) => res.json({ success: true, balance: currentBalance }));
 
-apiRouter.get("/swarm/status", (req, res) => {
+apiRouter.get("/swarm/status", (_req, res) => {
   res.json({
     agents: [
       { name: "Atlas", role: "Data", status: "Active", reputation: "98.4%" },
@@ -72,9 +70,9 @@ apiRouter.get("/swarm/status", (req, res) => {
   });
 });
 
-apiRouter.post("/swarm/claim-capital", async (req, res) => {
+apiRouter.post("/swarm/claim-capital", async (_req, res) => {
   try {
-    const userIp = req.ip || '127.0.0.1';
+    const userIp = _req.ip || '127.0.0.1';
     const auditHash = "0x" + Math.random().toString(16).substring(2, 66);
     const initialUSD = INITIAL_CAPITAL_ETH * ETH_PRICE_USD;
     
@@ -93,16 +91,19 @@ apiRouter.post("/swarm/claim-capital", async (req, res) => {
   }
 });
 
-apiRouter.get("/trades", async (req, res) => {
+apiRouter.get("/trades", (_req, res) => {
   try {
-    const result = await query("SELECT * FROM trades ORDER BY timestamp DESC LIMIT 100");
-    res.json({ success: true, trades: result.rows });
+    query("SELECT * FROM trades ORDER BY timestamp DESC LIMIT 100").then(result => {
+      res.json({ success: true, trades: result.rows });
+    }).catch(() => {
+      res.json({ success: true, trades: [] });
+    });
   } catch (error: any) {
     res.json({ success: true, trades: [] });
   }
 });
 
-apiRouter.get("/kraken/trades", async (req, res) => {
+apiRouter.get("/kraken/trades", (_req, res) => {
   const mockKrakenTrades: any = {};
   for (let i = 0; i < 5; i++) {
       const id = `KRAK-${Math.random().toString(36).substring(7).toUpperCase()}`;
@@ -118,8 +119,8 @@ apiRouter.get("/kraken/trades", async (req, res) => {
   res.json({ success: true, trades: mockKrakenTrades });
 });
 
-apiRouter.post("/swarm/execute", async (req, res) => {
-  const userIp = req.ip || '127.0.0.1';
+apiRouter.post("/swarm/execute", async (_req, res) => {
+  const userIp = _req.ip || '127.0.0.1';
   const auditHash = "0x" + Math.random().toString(16).substring(2, 66);
   try {
     let result = { finalDecision: "HOLD", sentiment: "STABLE", riskAssessment: "LOW" };
@@ -163,7 +164,7 @@ apiRouter.post("/swarm/execute", async (req, res) => {
   }
 });
 
-apiRouter.get("/swarm/leaderboard", (req, res) => {
+apiRouter.get("/swarm/leaderboard", (_req, res) => {
   res.json({
     success: true,
     rank: 4,
@@ -192,7 +193,7 @@ async function setupAndStart() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (req, res) => res.sendFile(path.join(distPath, 'index.html')));
+    app.get('*', (_req, res) => res.sendFile(path.join(distPath, 'index.html')));
   }
 
   if (!process.env.VERCEL) {
