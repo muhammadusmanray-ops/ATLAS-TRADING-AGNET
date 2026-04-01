@@ -41,7 +41,7 @@ const dataAgent = async (_state: AgentState) => {
     // [HACKATHON REQUIREMENT: Kraken Challenge] 
     // We prioritize Kraken CLI for market data retrieval if available
     /* 
-    const { stdout } = await execAsync("kraken-cli ticker --pair XXBTZUSD");
+    const { stdout } = await execAsync("kraken ticker BTCUSD -o json");
     const krakenData = JSON.parse(stdout);
     const price = krakenData.price;
     */
@@ -135,7 +135,7 @@ const executionAgent = async (state: AgentState) => {
     try {
       globalAddLog("[Lyra] 🔐 Generating EIP-712 TradeIntent payload...");
       const agentIdHashParam = parseInt(process.env.WALLET_PRIVATE_KEY?.substring(2,8) || '0', 16);
-      const signature = await signTradeIntent(agentIdHashParam, "XXBTZUSD", "buy", "0.01");
+      const signature = await signTradeIntent(agentIdHashParam, "BTCUSD", "buy", "0.01");
 
       globalAddLog(`[Lyra] ✅ EIP-712 Signature Generated: ${signature.substring(0, 15)}...`);
       globalAddLog(`[Lyra] ⛓️ Routing Intent to ERC-8004 Whitelisted Vault [Base Sepolia]...`);
@@ -143,7 +143,7 @@ const executionAgent = async (state: AgentState) => {
       // [HACKATHON REQUIREMENT: Kraken Challenge]
       // Programmatic execution via Kraken CLI for AI-native trading
       /*
-      await execAsync(`kraken-cli order submit --pair ${pair} --vol ${volume} --side ${type}`);
+      await execAsync(`kraken paper ${type} BTCUSD ${volume}`);
       globalAddLog(`[Lyra] 🦾 Kraken CLI Execution Command Sent.`);
       */
 

@@ -142,7 +142,7 @@ export default function Dashboard() {
       // Generate Kraken CLI style logs
       const krakenId = `OX${Math.random().toString(36).substring(7).toUpperCase()}`;
       const krakenCmds = [
-          `> [${new Date().toLocaleTimeString()}] k-order submit --pair=XXBTZUSD --vol=${amount} --side=${isLong ? 'buy' : 'sell'}`,
+          `> [${new Date().toLocaleTimeString()}] kraken paper ${isLong ? 'buy' : 'sell'} BTCUSD ${amount}`,
           `> [${new Date().toLocaleTimeString()}] CONFIRMED: TX_HASH[${krakenId}]`
       ];
       setKrakenLogs(prev => [...krakenCmds, ...prev].slice(0, 100));
@@ -262,7 +262,7 @@ export default function Dashboard() {
           const amount = (Math.random() * 0.05 + 0.01).toFixed(4);
           const krakenId = `OX${Math.random().toString(36).substring(7).toUpperCase()}`;
           setKrakenLogs(prev => [
-            `> [${new Date().toLocaleTimeString()}] k-order submit --pair=XXBTZUSD --vol=${amount} --side=${side}`,
+            `> [${new Date().toLocaleTimeString()}] kraken paper ${side} BTCUSD ${amount}`,
             `> [${new Date().toLocaleTimeString()}] CONFIRMED: TX_HASH[${krakenId}]`,
             ...prev
           ]);
