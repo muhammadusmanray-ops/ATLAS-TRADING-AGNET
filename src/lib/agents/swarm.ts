@@ -1,8 +1,8 @@
 import { ChatGroq } from "@langchain/groq";
 import { StateGraph, START, END } from "@langchain/langgraph";
 import dotenv from "dotenv";
-import { signTradeIntent } from './onchain.ts';
-import { addLog as globalAddLog } from '../utils/logger.ts';
+import { signTradeIntent } from './onchain.js';
+import { addLog as globalAddLog } from '../utils/logger.js';
 
 dotenv.config();
 

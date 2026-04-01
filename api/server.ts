@@ -1,10 +1,10 @@
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
-import { setLogCallback } from "../src/lib/utils/logger.ts";
-import { agentSwarm } from "../src/lib/agents/swarm.ts";
-import { registerAgentIdentity } from "../src/lib/agents/onchain.ts";
-import { initDb, query } from "../src/lib/db.ts";
+import { setLogCallback } from "../src/lib/utils/logger.js";
+import { agentSwarm } from "../src/lib/agents/swarm.js";
+import { registerAgentIdentity } from "../src/lib/agents/onchain.js";
+import { initDb, query } from "../src/lib/db.js";
 
 dotenv.config();
 
