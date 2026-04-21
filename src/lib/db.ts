@@ -32,12 +32,18 @@ export const initDb = async () => {
         price DECIMAL(20, 2),
         timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
         pnl VARCHAR(20),
+        balance_delta DECIMAL(20, 4),
         status VARCHAR(50) DEFAULT 'executed',
         reasoning TEXT,
-        ip_address VARCHAR(45),
-        audit_hash VARCHAR(64)
+        audit_hash VARCHAR(66)
       );
     `);
+    // Migrate existing tables that predate balance_delta
+    await query(`
+      ALTER TABLE trades
+        ADD COLUMN IF NOT EXISTS balance_delta DECIMAL(20, 4),
+        ADD COLUMN IF NOT EXISTS audit_hash VARCHAR(66);
+    `).catch(() => {});
     console.log("--- Neon DB Initialized Successfully ---");
   } catch (err: any) {
     console.error("--- Neon DB Initialization Failed ---", err);
