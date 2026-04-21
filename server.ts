@@ -46,10 +46,6 @@ function makeAuditHash(payload: string): string {
   return "0x" + createHash("sha256").update(payload).digest("hex");
 }
 
-function parsePnlUSD(pnl: string): number {
-  return parseFloat(pnl.replace(/[+$]/g, "")) * (pnl.startsWith("-") ? -1 : 1);
-}
-
 process.on("uncaughtException", (err) => console.error("UNCAUGHT EXCEPTION:", err));
 process.on("unhandledRejection", (reason) => console.error("UNHANDLED REJECTION:", reason));
 
