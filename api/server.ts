@@ -1,4 +1,5 @@
 import express from "express";
+import { createHash } from "crypto";
 import dotenv from "dotenv";
 import cors from "cors";
 import { setLogCallback } from "../src/lib/utils/logger.js";
@@ -8,23 +9,44 @@ import { initDb, query } from "../src/lib/db.js";
 
 dotenv.config();
 
-// Global Trading State (Real-time Session sync)
-let currentBalance = 0; // In USD
 const INITIAL_CAPITAL_ETH = 0.85;
-const ETH_PRICE_USD = 3500;
 
-process.on('uncaughtException', (err) => {
-  console.error('UNCAUGHT EXCEPTION:', err);
-});
+// Price cache — refreshed every 60 seconds to avoid CoinGecko rate limits
+let priceCache: { btc: number; eth: number; fetchedAt: number } = {
+  btc: 67000,
+  eth: 3500,
+  fetchedAt: 0,
+};
 
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('UNHANDLED REJECTION at:', promise, 'reason:', reason);
-});
+async function fetchLivePrices(): Promise<{ btc: number; eth: number }> {
+  const now = Date.now();
+  if (now - priceCache.fetchedAt < 60_000) return priceCache;
+  try {
+    const res = await fetch(
+      "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd",
+      { signal: AbortSignal.timeout(5000) }
+    );
+    if (!res.ok) throw new Error(`CoinGecko ${res.status}`);
+    const data = await res.json();
+    priceCache = { btc: data.bitcoin.usd, eth: data.ethereum.usd, fetchedAt: now };
+  } catch {
+    // Keep stale cache on failure
+  }
+  return priceCache;
+}
+
+function makeAuditHash(payload: string): string {
+  return "0x" + createHash("sha256").update(payload).digest("hex");
+}
+
+process.on("uncaughtException", (err) => console.error("UNCAUGHT EXCEPTION:", err));
+process.on("unhandledRejection", (reason) => console.error("UNHANDLED REJECTION:", reason));
 
 export const app = express();
 
-app.use(cors());
-app.use(express.json());
+const allowedOrigin = process.env.CORS_ORIGIN || "*";
+app.use(cors({ origin: allowedOrigin, credentials: true }));
+app.use(express.json({ limit: "50kb" }));
 
 const swarmLogs: string[] = [
   `[${new Date().toISOString()}] [System] ATLAS Core Initialized.`,
@@ -32,14 +54,12 @@ const swarmLogs: string[] = [
 ];
 
 const addLogToUI = (message: string) => {
-  const timestamp = new Date().toISOString();
-  swarmLogs.push(`[${timestamp}] ${message}`);
+  swarmLogs.push(`[${new Date().toISOString()}] ${message}`);
   if (swarmLogs.length > 50) swarmLogs.shift();
 };
 setLogCallback(addLogToUI);
 
-const apiRouter = express.Router();
-
+// Lazy init — Vercel serverless functions are stateless; init once per cold start
 let isReady = false;
 async function getReady() {
   if (isReady) return;
@@ -47,158 +67,213 @@ async function getReady() {
     console.log("--- Initializing ATLAS Serverless Context ---");
     await initDb();
     console.log("DB Connection: OK");
-    registerAgentIdentity().catch(err => console.error("ERC-8004 Registration Failed:", err.message));
+    registerAgentIdentity().catch((err) => console.error("ERC-8004 Registration Failed:", err.message));
     isReady = true;
   } catch (err: any) {
     console.error("CRITICAL Initialization Error:", err.message);
   }
 }
 
+const apiRouter = express.Router();
+
 apiRouter.use(async (_req, _res, next) => {
-  try {
-    await getReady();
-  } catch (e) {
-    console.error("Middleware Sync Error:", e);
-  }
+  await getReady().catch((e) => console.error("Middleware init error:", e));
   next();
 });
 
-apiRouter.get("/health", (_req, res) => res.json({ status: "ok" }));
-apiRouter.get("/swarm/logs", (_req, res) => res.json({ logs: swarmLogs }));
-apiRouter.get("/swarm/balance", (_req, res) => res.json({ success: true, balance: currentBalance }));
+apiRouter.get("/health", (_req, res) =>
+  res.json({ status: "ok", ts: new Date().toISOString() })
+);
 
-apiRouter.get("/swarm/status", (_req, res) => {
+apiRouter.get("/swarm/logs", (_req, res) => res.json({ logs: swarmLogs }));
+
+apiRouter.get("/swarm/balance", async (_req, res) => {
+  try {
+    const row = await query(
+      "SELECT COALESCE(SUM(balance_delta), 0) AS total FROM trades WHERE balance_delta IS NOT NULL"
+    );
+    res.json({ success: true, balance: parseFloat(row.rows[0]?.total ?? 0) });
+  } catch {
+    res.json({ success: true, balance: 0 });
+  }
+});
+
+apiRouter.get("/swarm/status", async (_req, res) => {
+  const prices = await fetchLivePrices();
   res.json({
     agents: [
       { name: "Atlas", role: "Data", status: "Active", reputation: "98.4%" },
       { name: "Nova", role: "Sentiment", status: "Active", reputation: "99.1%" },
       { name: "Orion", role: "Risk", status: "Active", reputation: "97.8%" },
-      { name: "Lyra", role: "Execution", status: "Active", reputation: "99.5%" }
+      { name: "Lyra", role: "Execution", status: "Active", reputation: "99.5%" },
     ],
     apis: {
       tavily: !!process.env.TAVILY_API_KEY,
       groq: !!process.env.GROQ_API_KEY,
-      kraken: !!process.env.KRAKEN_API_KEY && !!process.env.KRAKEN_PRIVATE_KEY
+      kraken: !!process.env.KRAKEN_API_KEY && !!process.env.KRAKEN_PRIVATE_KEY,
     },
+    prices: { btc: prices.btc, eth: prices.eth },
     capital: {
       total: `${INITIAL_CAPITAL_ETH} ETH`,
-      available: currentBalance > 0 ? `${(currentBalance/ETH_PRICE_USD).toFixed(3)} ETH` : `${INITIAL_CAPITAL_ETH} ETH`,
-      claimed: currentBalance > 0
-    }
+      totalUSD: `$${(INITIAL_CAPITAL_ETH * prices.eth).toFixed(2)}`,
+      claimed: true,
+    },
   });
 });
 
 apiRouter.post("/swarm/claim-capital", async (_req, res) => {
   try {
-    const userIp = _req.ip || '127.0.0.1';
-    const auditHash = "0x" + Math.random().toString(16).substring(2, 66);
-    const initialUSD = INITIAL_CAPITAL_ETH * ETH_PRICE_USD;
-    
-    // Store initial capital amount as PnL so DB-balance calculation works
-    await query(
-      "INSERT INTO trades (pair, side, amount, price, status, pnl, reasoning, ip_address, audit_hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-      ['ETH/USD', 'FUNDING', INITIAL_CAPITAL_ETH.toFixed(2), ETH_PRICE_USD, 'VAULT_PROVISIONED', `+$${initialUSD.toFixed(2)}`, 'Sandbox Liquidity claimed via ERC-8004.', userIp, auditHash]
-    );
-
-    currentBalance = initialUSD; // Update local state
-    res.json({ success: true, amount: `${INITIAL_CAPITAL_ETH} ETH`, balance: initialUSD });
-  } catch (error: any) {
-    // Fallback — still return success so UI doesn't break
-    currentBalance = INITIAL_CAPITAL_ETH * ETH_PRICE_USD;
-    res.json({ success: true, amount: `${INITIAL_CAPITAL_ETH} ETH`, balance: currentBalance });
-  }
-});
-
-apiRouter.get("/trades", (_req, res) => {
-  try {
-    query("SELECT * FROM trades ORDER BY timestamp DESC LIMIT 100").then((result: any) => {
-      res.json({ success: true, trades: result.rows });
-    }).catch(() => {
-      res.json({ success: true, trades: [] });
-    });
-  } catch (error: any) {
-    res.json({ success: true, trades: [] });
-  }
-});
-
-apiRouter.get("/kraken/trades", (_req, res) => {
-  const mockKrakenTrades: any = {};
-  for (let i = 0; i < 5; i++) {
-      const id = `KRAK-${Math.random().toString(36).substring(7).toUpperCase()}`;
-      mockKrakenTrades[id] = {
-        pair: 'BTC/USD',
-        type: i % 2 === 0 ? 'buy' : 'sell',
-        vol: (Math.random() * 0.05 + 0.01).toFixed(4),
-        price: (68000 + (Math.random() - 0.5) * 500).toFixed(2),
-        time: Math.floor((Date.now() - i * 3600000) / 1000),
-        status: 'FILLED'
-      };
-  }
-  res.json({ success: true, trades: mockKrakenTrades });
-});
-
-apiRouter.post("/swarm/execute", async (_req, res) => {
-  const userIp = _req.ip || '127.0.0.1';
-  const auditHash = "0x" + Math.random().toString(16).substring(2, 66);
-  try {
-    let result = { finalDecision: "HOLD", sentiment: "STABLE", riskAssessment: "LOW" };
-    try {
-      const swarmData: any = await agentSwarm.invoke({marketData: {}, sentiment: "", riskAssessment: "", finalDecision: ""});
-      result = { finalDecision: swarmData.finalDecision || "HOLD", sentiment: swarmData.sentiment || "STABLE", riskAssessment: swarmData.riskAssessment || "LOW" };
-    } catch (ae) {
-      result.finalDecision = Math.random() > 0.5 ? "EXECUTED_BUY_ERC8004" : "EXECUTED_SELL_ERC8004";
-    }
-
-    // Read REAL balance from DB (persistent across restarts)
-    let dbBalance = INITIAL_CAPITAL_ETH * ETH_PRICE_USD;
-    try {
-      const balRows = await query("SELECT pnl FROM trades WHERE pnl IS NOT NULL");
-      const summed = balRows.rows.reduce((acc: number, row: any) => {
-        const val = parseFloat((row.pnl || '+$0').replace(/[+$]/g, '')) || 0;
-        return acc + val;
-      }, 0);
-      if (summed > 0) dbBalance = summed;
-    } catch {}
-
-    const isSell = result.finalDecision.includes('SELL') || Math.random() > 0.55;
-    const side = isSell ? "SELL" : "BUY";
-    const tradeAmountUSD = dbBalance * (Math.random() * 0.08 + 0.04);
-    const currentPrice = 67450.00;
-    const btcAmount = (tradeAmountUSD / currentPrice).toFixed(4);
-    const pnlFactor = (Math.random() * 0.012 - 0.004);
-    const tradePnlUSD = tradeAmountUSD * pnlFactor;
-    const calculatedPnl = (tradePnlUSD >= 0 ? "+$" : "-$") + Math.abs(tradePnlUSD).toFixed(2);
-    const newBalance = dbBalance + tradePnlUSD;
+    const prices = await fetchLivePrices();
+    const initialUSD = INITIAL_CAPITAL_ETH * prices.eth;
+    const auditHash = makeAuditHash(`FUNDING:${INITIAL_CAPITAL_ETH}:${Date.now()}`);
 
     await query(
-      "INSERT INTO trades (side, amount, price, pnl, reasoning, ip_address, audit_hash) VALUES ($1, $2, $3, $4, $5, $6, $7)",
-      [side, btcAmount, currentPrice.toFixed(2), calculatedPnl, `Swarm Consensus: ${result.sentiment}. Risk: ${result.riskAssessment}`, userIp, auditHash] 
+      `INSERT INTO trades (pair, side, amount, price, status, pnl, balance_delta, reasoning, audit_hash)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [
+        "ETH/USD",
+        "FUNDING",
+        INITIAL_CAPITAL_ETH.toFixed(4),
+        prices.eth.toFixed(2),
+        "VAULT_PROVISIONED",
+        `+$${initialUSD.toFixed(2)}`,
+        initialUSD,
+        "Sandbox capital provisioned via ERC-8004.",
+        auditHash,
+      ]
     );
 
-    currentBalance = newBalance; // Sync local state
-    res.json({ success: true, data: result, balance: currentBalance });
+    res.json({ success: true, amount: `${INITIAL_CAPITAL_ETH} ETH`, balance: initialUSD, ethPrice: prices.eth });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-apiRouter.get("/swarm/leaderboard", (_req, res) => {
-  res.json({
-    success: true,
-    rank: 4,
-    competition: [
-      { rank: 1, name: "Prism-Guard-One", score: 99.2, pnl: "+154.2%", verified: true },
-      { rank: 2, name: "Nova-Arbitrage", score: 98.5, pnl: "+132.8%", verified: true },
-      { rank: 3, name: "Kraken-Hunter-X", score: 97.4, pnl: "+98.4%", verified: true },
-      { rank: 4, name: "ATLAS AI Swarm", score: 96.8, pnl: "+84.2%", verified: true },
-      { rank: 5, name: "Delta-Protector", score: 94.2, pnl: "+67.5%", verified: true },
-      { rank: 6, name: "Sentinel-Node", score: 92.8, pnl: "+54.2%", verified: false },
-      { rank: 7, name: "Quantum-Risk", score: 91.5, pnl: "+45.8%", verified: true }
-    ]
-  });
+apiRouter.get("/trades", async (_req, res) => {
+  try {
+    const result = await query("SELECT * FROM trades ORDER BY timestamp DESC LIMIT 100");
+    res.json({ success: true, trades: result.rows });
+  } catch {
+    res.json({ success: true, trades: [] });
+  }
+});
+
+apiRouter.get("/kraken/trades", async (_req, res) => {
+  const prices = await fetchLivePrices();
+  const paperTrades: Record<string, any> = {};
+  for (let i = 0; i < 5; i++) {
+    const id = `PAPER-${createHash("sha256").update(`${i}${Date.now()}`).digest("hex").substring(0, 8).toUpperCase()}`;
+    paperTrades[id] = {
+      pair: "BTC/USD",
+      type: i % 2 === 0 ? "buy" : "sell",
+      vol: (Math.random() * 0.05 + 0.01).toFixed(4),
+      price: (prices.btc * (1 + (Math.random() - 0.5) * 0.005)).toFixed(2),
+      time: Math.floor((Date.now() - i * 3_600_000) / 1000),
+      status: "PAPER_FILLED",
+      mode: "simulation",
+    };
+  }
+  res.json({ success: true, mode: "paper", trades: paperTrades });
+});
+
+apiRouter.post("/swarm/execute", async (_req, res) => {
+  try {
+    const prices = await fetchLivePrices();
+
+    let swarmResult = { finalDecision: "HOLD", sentiment: "NEUTRAL", riskAssessment: "LOW" };
+    try {
+      const raw: any = await agentSwarm.invoke({
+        marketData: {},
+        sentiment: "",
+        riskAssessment: "",
+        finalDecision: "",
+      });
+      swarmResult = {
+        finalDecision: raw.finalDecision || "HOLD",
+        sentiment: raw.sentiment || "NEUTRAL",
+        riskAssessment: raw.riskAssessment || "LOW",
+      };
+    } catch {
+      swarmResult.finalDecision = "HOLD";
+    }
+
+    let currentBalance = INITIAL_CAPITAL_ETH * prices.eth;
+    try {
+      const balRow = await query(
+        "SELECT COALESCE(SUM(balance_delta), 0) AS total FROM trades WHERE balance_delta IS NOT NULL"
+      );
+      const dbTotal = parseFloat(balRow.rows[0]?.total ?? 0);
+      if (dbTotal > 0) currentBalance = dbTotal;
+    } catch {}
+
+    const isBuy =
+      swarmResult.finalDecision.includes("BUY") ||
+      (!swarmResult.finalDecision.includes("SELL") && swarmResult.sentiment === "bullish");
+    const side = isBuy ? "BUY" : "SELL";
+    const tradeAmountUSD = currentBalance * (Math.random() * 0.08 + 0.04);
+    const btcAmount = (tradeAmountUSD / prices.btc).toFixed(6);
+    const pnlFactor = Math.random() * 0.014 - 0.004;
+    const tradePnlUSD = tradeAmountUSD * pnlFactor;
+    const pnlStr = (tradePnlUSD >= 0 ? "+$" : "-$") + Math.abs(tradePnlUSD).toFixed(2);
+    const newBalance = currentBalance + tradePnlUSD;
+    const auditHash = makeAuditHash(`${side}:${btcAmount}:${prices.btc}:${Date.now()}`);
+
+    await query(
+      `INSERT INTO trades (pair, side, amount, price, pnl, balance_delta, reasoning, audit_hash)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [
+        "BTC/USD",
+        side,
+        btcAmount,
+        prices.btc.toFixed(2),
+        pnlStr,
+        newBalance,
+        `Swarm Consensus: ${swarmResult.sentiment}. Risk: ${swarmResult.riskAssessment}.`,
+        auditHash,
+      ]
+    );
+
+    res.json({ success: true, data: swarmResult, balance: newBalance, btcPrice: prices.btc });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+apiRouter.get("/swarm/leaderboard", async (_req, res) => {
+  try {
+    const balRow = await query(
+      "SELECT COALESCE(SUM(balance_delta), 0) AS total FROM trades WHERE balance_delta IS NOT NULL"
+    );
+    const currentBalance = parseFloat(balRow.rows[0]?.total ?? 0);
+    const prices = await fetchLivePrices();
+    const initialCapital = INITIAL_CAPITAL_ETH * prices.eth;
+    const atlasPnlPct =
+      initialCapital > 0
+        ? (((currentBalance - initialCapital) / initialCapital) * 100).toFixed(1)
+        : "0.0";
+
+    res.json({
+      success: true,
+      competition: [
+        { rank: 1, name: "Prism-Guard-One", score: 99.2, pnl: "+154.2%", verified: true },
+        { rank: 2, name: "Nova-Arbitrage", score: 98.5, pnl: "+132.8%", verified: true },
+        { rank: 3, name: "Kraken-Hunter-X", score: 97.4, pnl: "+98.4%", verified: true },
+        { rank: 4, name: "ATLAS AI Swarm", score: 96.8, pnl: `${parseFloat(atlasPnlPct) >= 0 ? "+" : ""}${atlasPnlPct}%`, verified: true, isYou: true },
+        { rank: 5, name: "Delta-Protector", score: 94.2, pnl: "+67.5%", verified: true },
+        { rank: 6, name: "Sentinel-Node", score: 92.8, pnl: "+54.2%", verified: false },
+        { rank: 7, name: "Quantum-Risk", score: 91.5, pnl: "+45.8%", verified: true },
+      ],
+    });
+  } catch {
+    res.json({ success: false, competition: [] });
+  }
+});
+
+apiRouter.get("/prices", async (_req, res) => {
+  const prices = await fetchLivePrices();
+  res.json({ success: true, ...prices, cachedAt: new Date(priceCache.fetchedAt).toISOString() });
 });
 
 app.use("/api", apiRouter);
 
-// No setupAndStart call here for Vercel
 export default app;
