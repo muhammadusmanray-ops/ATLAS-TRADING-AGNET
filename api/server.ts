@@ -5,7 +5,7 @@ import cors from "cors";
 import { setLogCallback } from "../src/lib/utils/logger.js";
 import { agentSwarm } from "../src/lib/agents/swarm.js";
 import { registerAgentIdentity } from "../src/lib/agents/onchain.js";
-import { initDb, query } from "../src/lib/db.js";
+import { initDb, query, isDbAvailable } from "../src/lib/db.js";
 
 dotenv.config();
 
@@ -82,7 +82,7 @@ apiRouter.use(async (_req, _res, next) => {
 });
 
 apiRouter.get("/health", (_req, res) =>
-  res.json({ status: "ok", ts: new Date().toISOString() })
+  res.json({ status: "ok", ts: new Date().toISOString(), db: isDbAvailable() ? "connected" : "stateless" })
 );
 
 apiRouter.get("/swarm/logs", (_req, res) => res.json({ logs: swarmLogs }));
