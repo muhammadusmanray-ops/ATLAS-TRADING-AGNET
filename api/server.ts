@@ -44,8 +44,10 @@ process.on("unhandledRejection", (reason) => console.error("UNHANDLED REJECTION:
 
 export const app = express();
 
-const allowedOrigin = process.env.CORS_ORIGIN || "*";
-app.use(cors({ origin: allowedOrigin, credentials: true }));
+const corsOptions = process.env.CORS_ORIGIN
+  ? { origin: process.env.CORS_ORIGIN, credentials: true }
+  : { origin: true };
+app.use(cors(corsOptions));
 app.use(express.json({ limit: "50kb" }));
 
 const swarmLogs: string[] = [
